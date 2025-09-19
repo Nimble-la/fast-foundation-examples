@@ -45,13 +45,13 @@ module "ec2_instance" {
   # Built-in security group creation
   create_security_group = true
   security_group_name   = "${var.name}-sg"
-  security_group_rules = {
+  security_group_ingress_rules = {
     ingress_app = {
-      from_port                = var.app_port
-      to_port                  = var.app_port
-      protocol                 = "tcp"
-      source_security_group_id = module.alb.security_group_id
-      description              = "Application port from ALB"
+      from_port                    = var.app_port
+      to_port                      = var.app_port
+      protocol                     = "tcp"
+      referenced_security_group_id = module.alb.security_group_id
+      description                  = "Application port from ALB"
     }
   }
 
@@ -63,7 +63,7 @@ module "ec2_instance" {
   }
 
   # User data for application setup
-  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
+  user_data_base64 = base64encode(templatefile("${path.module}/user_data.sh", {
     app_name = var.name
   }))
 
@@ -118,25 +118,18 @@ module "alb" {
       protocol         = "HTTP"
       port             = var.app_port
       target_type      = "instance"
+      target_id        = module.ec2_instance.id
       
       health_check = {
         enabled             = true
         healthy_threshold   = 2
         unhealthy_threshold = 3
-        timeout             = 10
+        timeout             = 6
         interval            = 30
         path                = var.health_check_path
         matcher             = "200"
         port                = var.app_port
         protocol            = "HTTP"
-      }
-
-      # Target attachment
-      targets = {
-        ec2_instance = {
-          target_id = module.ec2_instance.id
-          port      = var.app_port
-        }
       }
     }
   }
