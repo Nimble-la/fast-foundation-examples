@@ -1,0 +1,145 @@
+# Data sources for existing resources
+data "aws_vpc" "main" {
+  filter {
+    name   = "tag:Name"
+    values = [var.vpc_name]
+  }
+}
+
+data "aws_subnets" "private" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.main.id]
+  }
+  filter {
+    name   = "tag:Type"
+    values = ["Private"]
+  }
+}
+
+data "aws_subnets" "public" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.main.id]
+  }
+  filter {
+    name   = "tag:Type"
+    values = ["Public"]
+  }
+}
+
+#============================================================================
+# CORE EC2 MODULE - The base functionality with built-in security group and IAM
+#============================================================================
+module "ec2_instance" {
+  source  = "terraform-aws-modules/ec2-instance/aws"
+  version = "6.1.1"
+
+  name = var.name
+
+  instance_type = var.instance_type
+  key_name     = var.key_name
+  monitoring   = true
+  subnet_id    = data.aws_subnets.private.ids[0]
+
+  # Built-in security group creation
+  create_security_group = true
+  security_group_name   = "${var.name}-sg"
+  security_group_rules = {
+    ingress_app = {
+      from_port                = var.app_port
+      to_port                  = var.app_port
+      protocol                 = "tcp"
+      source_security_group_id = module.alb.security_group_id
+      description              = "Application port from ALB"
+    }
+  }
+
+  # Built-in IAM role creation  
+  create_iam_instance_profile = true
+  iam_role_name              = "${var.name}-role"
+  iam_role_policies = {
+    AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+  }
+
+  # User data for application setup
+  user_data = base64encode(templatefile("${path.module}/user_data.sh", {
+    app_name = var.name
+  }))
+
+  tags = var.tags
+}
+
+#============================================================================
+# EXTENDED RESOURCES - Additional capabilities not in the base module
+#============================================================================
+
+# Application Load Balancer using official module
+module "alb" {
+  source  = "terraform-aws-modules/alb/aws"
+  version = "~> 10.0"
+
+  name               = "${var.name}-alb"
+  vpc_id             = data.aws_vpc.main.id
+  subnets            = data.aws_subnets.public.ids
+  enable_deletion_protection = var.enable_deletion_protection
+
+  # Security group rules for ALB
+  security_group_ingress_rules = {
+    all_http = {
+      from_port   = 80
+      to_port     = 80
+      ip_protocol = "tcp"
+      description = "HTTP web traffic"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+  }
+  security_group_egress_rules = {
+    all = {
+      ip_protocol = "-1"
+      cidr_ipv4   = data.aws_vpc.main.cidr_block
+    }
+  }
+
+  listeners = {
+    http = {
+      port     = 80
+      protocol = "HTTP"
+
+      forward = {
+        target_group_key = "ec2_instances"
+      }
+    }
+  }
+
+  target_groups = {
+    ec2_instances = {
+      name             = "${var.name}-tg"
+      protocol         = "HTTP"
+      port             = var.app_port
+      target_type      = "instance"
+      
+      health_check = {
+        enabled             = true
+        healthy_threshold   = 2
+        unhealthy_threshold = 3
+        timeout             = 10
+        interval            = 30
+        path                = var.health_check_path
+        matcher             = "200"
+        port                = var.app_port
+        protocol            = "HTTP"
+      }
+
+      # Target attachment
+      targets = {
+        ec2_instance = {
+          target_id = module.ec2_instance.id
+          port      = var.app_port
+        }
+      }
+    }
+  }
+
+  tags = var.tags
+}
