@@ -2,8 +2,6 @@
 yum update -y
 yum install -y httpd
 
-sudo systemctl enable amazon-ssm-agent
-sudo systemctl start amazon-ssm-agent
 # Configure httpd to run on custom port
 sed -i "s/Listen 80/Listen 8080/" /etc/httpd/conf/httpd.conf
 
