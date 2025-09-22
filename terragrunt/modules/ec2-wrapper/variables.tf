@@ -3,9 +3,27 @@ variable "name" {
   type        = string
 }
 
-variable "vpc_name" {
-  description = "Name of the VPC to deploy into"
+variable "vpc_id" {
+  description = "ID of the VPC to deploy into"
   type        = string
+}
+
+variable "vpc_private_subnets" {
+  description = "Private subnets within the VPC for securely deploying the EC2 instance"
+  type        = list(string)
+  validation {
+    condition     = length(var.vpc_private_subnets) > 0
+    error_message = "At least one private subnet must be provided."
+  }
+}
+
+variable "vpc_public_subnets" {
+  description = "Public subnets within the VPC for ALB"
+  type        = list(string)
+  validation {
+    condition     = length(var.vpc_public_subnets) > 0
+    error_message = "At least one public subnet must be provided."
+  }
 }
 
 variable "instance_type" {

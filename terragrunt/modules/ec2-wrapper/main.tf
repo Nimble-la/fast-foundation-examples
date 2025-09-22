@@ -1,33 +1,3 @@
-# Data sources for existing resources
-data "aws_vpc" "main" {
-  filter {
-    name   = "tag:Name"
-    values = [var.vpc_name]
-  }
-}
-
-data "aws_subnets" "private" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.main.id]
-  }
-  filter {
-    name   = "tag:Type"
-    values = ["Private"]
-  }
-}
-
-data "aws_subnets" "public" {
-  filter {
-    name   = "vpc-id"
-    values = [data.aws_vpc.main.id]
-  }
-  filter {
-    name   = "tag:Type"
-    values = ["Public"]
-  }
-}
-
 #============================================================================
 # CORE EC2 MODULE - The base functionality with built-in security group and IAM
 #============================================================================
@@ -40,13 +10,13 @@ module "ec2_instance" {
   instance_type = var.instance_type
   key_name      = var.key_name
   monitoring    = true
-  subnet_id     = data.aws_subnets.private.ids[0]
+  subnet_id     = var.vpc_private_subnets[0]
   
   vpc_security_group_ids = [module.ec2_instance_security_group.security_group_id]
 
   # Built-in IAM role creation  
   create_iam_instance_profile = true
-  iam_role_name              = "${var.name}-role"
+  iam_role_name               = "${var.name}-role"
   iam_role_policies = {
     AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
   }
@@ -61,11 +31,11 @@ module "ec2_instance" {
 
 module "ec2_instance_security_group" {
   source  = "terraform-aws-modules/security-group/aws"
-  version = "~> 4.0"
+  version = "4.17.2"
 
   name        = var.name
   description = "Security group usage with EC2 instance"
-  vpc_id      = data.aws_vpc.main.id
+  vpc_id      = var.vpc_id
   
   ingress_with_source_security_group_id = [
     {
@@ -89,9 +59,9 @@ module "alb" {
   source  = "terraform-aws-modules/alb/aws"
   version = "9.13.0"
 
-  name               = "${var.name}-alb"
-  vpc_id             = data.aws_vpc.main.id
-  subnets            = data.aws_subnets.public.ids
+  name                       = "${var.name}-alb"
+  vpc_id                     = var.vpc_id
+  subnets                    = var.vpc_public_subnets
   enable_deletion_protection = var.enable_deletion_protection
 
   # Security group rules for ALB
@@ -107,7 +77,7 @@ module "alb" {
   security_group_egress_rules = {
     all = {
       ip_protocol = "-1"
-      cidr_ipv4   = data.aws_vpc.main.cidr_block
+      cidr_ipv4   = "0.0.0.0/0"
     }
   }
 
@@ -124,11 +94,11 @@ module "alb" {
 
   target_groups = {
     ec2_instances = {
-      name             = "${var.name}-tg"
-      protocol         = "HTTP"
-      port             = var.app_port
-      target_type      = "instance"
-      target_id        = module.ec2_instance.id
+      name        = "${var.name}-tg"
+      protocol    = "HTTP"
+      port        = var.app_port
+      target_type = "instance"
+      target_id   = module.ec2_instance.id
       
       health_check = {
         enabled             = true
