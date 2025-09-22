@@ -32,7 +32,7 @@ output "target_groups" {
 
 output "web_security_group_id" {
   description = "ID of the web security group"
-  value       = module.ec2_instance.security_group_id
+  value       = module.ec2_instance_security_group.security_group_id
 }
 
 output "alb_security_group_id" {
