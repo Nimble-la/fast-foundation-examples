@@ -38,22 +38,11 @@ module "ec2_instance" {
   name = var.name
 
   instance_type = var.instance_type
-  key_name     = var.key_name
-  monitoring   = true
-  subnet_id    = data.aws_subnets.private.ids[0]
-
-  # Built-in security group creation
-  create_security_group = true
-  security_group_name   = "${var.name}-sg"
-  security_group_ingress_rules = {
-    ingress_app = {
-      from_port                    = var.app_port
-      to_port                      = var.app_port
-      protocol                     = "tcp"
-      referenced_security_group_id = module.alb.security_group_id
-      description                  = "Application port from ALB"
-    }
-  }
+  key_name      = var.key_name
+  monitoring    = true
+  subnet_id     = data.aws_subnets.private.ids[0]
+  
+  vpc_security_group_ids = [module.ec2_instance_security_group.security_group_id]
 
   # Built-in IAM role creation  
   create_iam_instance_profile = true
@@ -66,6 +55,27 @@ module "ec2_instance" {
   user_data_base64 = base64encode(templatefile("${path.module}/user_data.sh", {
     app_name = var.name
   }))
+
+  tags = var.tags
+}
+
+module "ec2_instance_security_group" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 4.0"
+
+  name        = var.name
+  description = "Security group usage with EC2 instance"
+  vpc_id      = data.aws_vpc.main.id
+  
+  ingress_with_source_security_group_id = [
+    {
+      from_port                = var.app_port
+      to_port                  = var.app_port
+      protocol                 = "tcp"
+      description              = "Application port from ALB"
+      source_security_group_id = module.alb.security_group_id
+    }
+  ]
 
   tags = var.tags
 }
