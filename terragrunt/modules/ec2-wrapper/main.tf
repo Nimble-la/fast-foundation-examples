@@ -77,7 +77,7 @@ module "ec2_instance" {
 # Application Load Balancer using official module
 module "alb" {
   source  = "terraform-aws-modules/alb/aws"
-  version = "~> 10.0"
+  version = "9.13.0"
 
   name               = "${var.name}-alb"
   vpc_id             = data.aws_vpc.main.id
