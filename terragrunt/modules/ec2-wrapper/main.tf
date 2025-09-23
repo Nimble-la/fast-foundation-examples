@@ -46,6 +46,17 @@ module "ec2_instance_security_group" {
       source_security_group_id = module.alb.security_group_id
     }
   ]
+  
+  egress_with_cidr_blocks = [
+    {
+      rule        = "https-443-tcp"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    {
+      rule        = "http-80-tcp"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
 
   tags = var.tags
 }
